@@ -1,0 +1,14 @@
+/.vs
+/.vscode
+__pycache__
+*.pkl
+/*.log
+*.pyc
+/logs
+cache
+/runs
+*.c
+/build
+pycocoevalcap
+tmp
+temp
