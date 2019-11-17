@@ -96,6 +96,10 @@ if args["except_domain"] != "":
 if args["only_domain"] != "":
     args["addName"] += "Only"+args["only_domain"]
 
+args["addName"] += "Rich" + args["rich_domains"]
+args["addName"] += "Few" + args["few_domains"]
+# args["addName"] += "Uns" + args["unseen_domains"]
+
 args["run_id"] += '-' + args["addName"]
 
 print(str(args))

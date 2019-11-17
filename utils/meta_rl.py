@@ -1,80 +1,35 @@
 #coding: utf-8
-"""
-TODO: unfinished
-"""
 import os
 import sys
-import json
-import shutil
+
 import copy
-import torch
+import time
+import torch 
 import torch.nn as nn
 import numpy as np
-import pandas as pd
-from torch.autograd import Variable
-from tensorboardX import SummaryWriter
-from abc import ABCMeta, abstractmethod
-import socket
-from datetime import datetime
-from tqdm import tqdm
+from collections import OrderedDict
 import logging
-
-from .log import logger
-import clks
-import clks.optim
-import clks.optim.lr_scheduler
+from clks.utils.log import logger
+import clks.utils.scaffold
+ModeKeys = clks.utils.scaffold.ModeKeys
 import clks.func.tensor as T
 
 
-class ModeKeys:
-    def __init__(self):
-        self.__state__ = {}
-    def __getattr__(self, name):
-        if name not in self.__state__:
-            # self.__state__[name] = len(self.__state__)
-            self.__state__[name] = name
-        return self.__state__[name]
-ModeKeys = ModeKeys()
-
-
-class Scaffold:
+class MetaRLLearner(clks.utils.scaffold.Scaffold):
 
     def __init__(self):
         super().__init__()
-
-    def build(self, args, config, save_path, scaffold_name):
-        self.args = args
-        self.config = config
-
-        self.save_path = save_path
-        self.scaffold_name = scaffold_name
-        self.scaffold_path = os.path.join(self.save_path, self.scaffold_name)
-
-        if not os.path.exists(self.scaffold_path):
-            # build new workspace.
-            print("built scaffold at {}".format(self.scaffold_path))
-            os.makedirs(self.scaffold_path)
-
-        # # init logger
-        log_file = os.path.join(
-            self.scaffold_path, "{}.log".format(self.scaffold_name))
-        self.logger = logger
-        self.logger.setLevel(logging.INFO)
-        # formatter = logging.Formatter(
-        #     "%(asctime)s - %(levelname)s - %(message)s", 
-        #     datefmt='%Y-%m-%d %H:%M:%S')
-        # sh = logging.StreamHandler()
-        # sh.setLevel(logging.INFO)
-        # sh.setFormatter(formatter)
-        # self.logger.addHandler(sh)
-        return self
-
-    def train(self, train_spec, eval_spec = None):
+        # self.opt = torch.Adam(self.net.parameters(), lr=meta_step_size)
+    
+    def train(self, train_spec, eval_spec):
         train_loader = train_spec["train_loader"]
         self.model = train_spec["model"]
         self.optimizer = train_spec["optimizer"]
+
         if "lr_scheduler" in train_spec:
             self.lr_scheduler = train_spec["lr_scheduler"]
+
+        self.meta_loss_lambda = train_spec["meta_loss_lambda"]
 
         do_eval = eval_spec is not None
         if do_eval:
@@ -126,7 +81,7 @@ class Scaffold:
 
             num_batches = len(train_loader)
             # pbar = tqdm(enumerate(train_loader), total=num_batches)
-            for it, batch_data in enumerate(train_loader):
+            for it, (curr_batch, look_ahead_batches) in enumerate(train_loader):
                 # schedule lr.
                 if (hasattr(self, "lr_scheduler") and 
                         isinstance(self.lr_scheduler, clks.optim.lr_scheduler.LRScheduler)):
@@ -137,9 +92,40 @@ class Scaffold:
 
                 self.model.before_update(self.ckpt["global_count"])
 
-                loss, disp_vals = self.model.compute_loss(batch_data)
+                # meta rl
+                model_origin = copy.deepcopy(self.model.state_dict())
+                optim_origin = copy.deepcopy(self.optimizer.state_dict())
 
-                loss.backward()
+                batch_losses = []
+                for ilk, batch in enumerate([curr_batch ,*look_ahead_batches]):
+                    self.optimizer.zero_grad()
+
+                    loss, curr_disp_vals = self.model.compute_loss(batch)
+                    batch_losses.append(loss)
+                    if ilk == 0: disp_vals = curr_disp_vals
+                    
+                    if ilk != len(look_ahead_batches):
+                        loss.backward(retain_graph=True)
+                        if train_spec["clip_grad_norm"]:
+                            grad_norm = torch.nn.utils.clip_grad_norm_(
+                                self.model.trainable_parameters(), 
+                                train_spec["grad_clip_value"])
+                        else:
+                            grad_norm = T.total_norm([
+                                p.grad.data for p in self.model.trainable_parameters() 
+                                if p.grad is not None])
+                        self.optimizer.step()
+                
+                # meta update
+                self.model.load_state_dict(model_origin)
+                self.optimizer.load_state_dict(optim_origin)
+
+                meta_loss = batch_losses[-1]
+                for loss in batch_losses[-2::-1]:
+                    meta_loss = loss * (1 - self.meta_loss_lambda)  + meta_loss * self.meta_loss_lambda
+                
+                self.optimizer.zero_grad()
+                meta_loss.backward()
                 if train_spec["clip_grad_norm"]:
                     grad_norm = torch.nn.utils.clip_grad_norm_(
                         self.model.trainable_parameters(), 
@@ -152,7 +138,8 @@ class Scaffold:
 
                 self.ckpt["global_count"] += 1
 
-                train_loss = loss.data.item()
+                meta_loss = meta_loss.data.item()
+                batch_losses = [loss.data.item() for loss in batch_losses]
 
                 # periodical display
                 if (train_spec["disp_freq"] >= 1
@@ -162,13 +149,18 @@ class Scaffold:
                             int(train_spec["disp_freq"] * num_batches), 1) == 0):
                     msg = "[{}][Train] E {} B {}({:.0f}%) U {}; C {:.4f} N {}; ".format(
                         self.scaffold_name, epo, it, it * 100. / num_batches,
-                        self.ckpt["global_count"], train_loss, 
+                        self.ckpt["global_count"], meta_loss, 
                         "na" if grad_norm is None else "{:.4f}".format(grad_norm))
+                    msg += "CC {:.4f}".format(batch_losses[0])
+                    if len(batch_losses) > 1:
+                        for ilk, bloss in enumerate(batch_losses[1:]):
+                            msg += " LA{} {:.4f}".format(ilk+1, bloss)
+                    msg += "; "
                     for k, v in disp_vals.items():
                         msg += "{} {:.4f} ".format(k, v.item() if isinstance(v, torch.Tensor) else v)
                     self.logger.info(msg)
 
-                if np.isnan(train_loss):
+                if np.isnan(meta_loss):
                     self.logger.info("NaN occurred! Stop training.")
                     self.early_stop = True
                     break
@@ -280,77 +272,4 @@ class Scaffold:
                 self.scaffold_path, "{}.final.pth".format(self.scaffold_name)))
         self.logger.info("final model saved.")
         return self.model
-
-    def evaluate(self, eval_spec):
-        self.model = eval_spec["model"]
-        eval_loader = eval_spec["eval_loader"]
-        eval_callback = eval_spec["callback"]
-
-        # restore model image.
-        if self.args["load_ckpt"]:
-            if self.args["target"] is not None:
-                file_name = os.path.join(self.scaffold_path, "{}.{}.ckpt".format(
-                    self.scaffold_name, self.args["target"]))
-            else:
-                file_name = os.path.join(self.scaffold_path, "{}.ckpt".format(
-                    self.scaffold_name))
-            self.logger.info("loading model weights from {}.".format(file_name))
-            self.model.load_state_dict(self.load_by_torch(file_name)["best_eval_model"])
-        else:
-            file_name = os.path.join(self.scaffold_path,  "{}.{}.pth".format(
-                self.scaffold_name, self.args["target"]))
-            self.logger.info("loading model weights from {}.".format(file_name))
-            self.model.load_state_dict(self.load_by_torch(file_name))
-
-        self.logger.info("start evalution.")
-
-        with torch.no_grad():
-            eval_callback(self, eval_loader)
-
-        self.logger.info("done.")
-
-    def init_ckpt(self):
-        ckpt = {
-            "curr_epoch" : 0,
-            "global_count" : 0,
-            "best_eval_score" : None,
-            "best_eval_model" : None,
-            "curr_patience" : 0
-        }
-        return ckpt
-
-    def pack_ckpt(self):
-        ckpt = copy.deepcopy(self.ckpt)
-        # collect images
-        ckpt["model"] = self.model.state_dict()
-        ckpt["optimizer"] = self.optimizer.state_dict()
-        ckpt["train_stream"] = self.train_stream.state_dict()
-        ckpt["eval_stream"] = self.eval_stream.state_dict()
-        return ckpt
-
-    def unpack_ckpt(self, ckpt):
-        self.model.load_state_dict(ckpt["model"])
-        self.optimizer.load_state_dict(ckpt["optimizer"])
-        self.train_stream.load_state_dict(ckpt["train_stream"])
-        self.eval_stream.load_state_dict(ckpt["eval_stream"])
-        # restore self.ckpt
-        for k in self.ckpt.keys():
-            self.ckpt[k] = ckpt[k]
-
-    def save_by_torch(self, obj, file_name):
-        if os.path.exists(file_name):
-            backup_file = file_name+".backup"
-            if os.path.exists(backup_file):
-                os.remove(backup_file)
-            os.rename(file_name, backup_file)
-        torch.save(obj, file_name)
-
-    def load_by_torch(self, file_name):
-        assert os.path.exists(file_name)
-        return torch.load(file_name)
-
-
-if __name__=='__main__':
-    scf = Scaffold()
-    assert hasattr(scf, "build")
 

@@ -9,9 +9,9 @@ from tqdm import tqdm
 from embeddings import GloveEmbedding, KazumaCharEmbedding
 from collections import defaultdict, OrderedDict
 try:
-    from .vocab import WordVocab, LabelVocab, add_words_to_vocab
+    from ..vocab import WordVocab, LabelVocab, add_words_to_vocab
 except:
-    from vocab import WordVocab, LabelVocab, add_words_to_vocab
+    from clks.models.mwoz20.vocab import WordVocab, LabelVocab, add_words_to_vocab
 
 from data.mwoz20.interface import read_ontology
 from data.mwoz20.fix_label import fix_general_label_error

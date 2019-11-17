@@ -10,7 +10,7 @@ class Model(nn.Module):
         super().__init__()
 
     @abstractmethod
-    def init_weights(self, pretrained):
+    def init_weights(self):
         pass
 
     # @abstractmethod

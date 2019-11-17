@@ -16,6 +16,11 @@ np.random.seed(2)
 
 file_dir = os.path.dirname(__file__)
 
+digitpat = re.compile('\d+')
+timepat = re.compile("\d{1,2}[:]\d{1,2}")
+pricepat2 = re.compile("\d{1,3}[.]\d{1,2}")
+timepat = re.compile("\d{1,2}[:]\d{1,2}")
+pricepat = re.compile("\d{1,3}[.]\d{1,2}")
 
 def parse_args():
     import argparse
@@ -442,7 +447,7 @@ def divideData(data):
     fin.close()
 
     trainListFile = open(
-        os.path.join(args["save_path"], "mwoz20", 'proc', 'trainListFile'), 'w')
+        os.path.join(args["save_path"], "mwoz20", 'proc', 'trainListFile'), 'w', encoding='utf8')
 
     test_dials = []
     val_dials = []

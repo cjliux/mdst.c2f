@@ -3,6 +3,14 @@ import os
 import sys
 import logging
 
+try:
+    from .__conf__ import *
+    from .config_maml_aux import args
+except:
+    from __conf__ import *
+    from config_maml_aux import args
+sys.path.append(MDST_HOME)
+
 import clks
 import utils
 
@@ -10,12 +18,6 @@ from clks.utils.config import Config
 import utils.maml_aux as maml_aux
 ModeKeys = maml_aux.ModeKeys
 
-try:
-    from .__conf__ import *
-    from .config_maml_aux import args
-except:
-    from __conf__ import *
-    from config_maml_aux import args
 
 
 def train(args):
@@ -79,5 +81,4 @@ def test(args):
 
 
 if __name__ == '__main__':
-    os.chdir(MDST_HOME)
     {"train": train, "eval": evaluate, "test": test}[args["mode"]](args)

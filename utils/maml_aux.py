@@ -12,6 +12,7 @@ import logging
 from clks.utils.log import logger
 import clks.utils.scaffold
 ModeKeys = clks.utils.scaffold.ModeKeys
+import clks.func.tensor as T
 
 
 class MamlAuxLearner(clks.utils.scaffold.Scaffold):

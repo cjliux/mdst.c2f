@@ -6,11 +6,7 @@ from distutils.extension import Extension
 import re
 import glob
 
-# ignores = ["./**/setup.py", "./setup.py", "./build/**/*.py"]
-# no_compiles = [
-#     "./**/__init__.py", "./**/__main__.py", "./**/__conf__.py", 
-#     "./scripts/**/*.py", "./**/scripts/*.py", "./**/scripts/**/*.py"
-# ]
+
 ignores = [
     "./**/setup.py", "./setup.py", "./build/**/*.py",
     "**/setup.py", "setup.py", "build/**/*.py"
@@ -28,7 +24,7 @@ py_modules = [file[2:-3] for file in all_py_files
     for mod_pattern in no_compiles])]
 
 setup(
-    name = "clks",
+    name = "mdst",
     version = "0.0.1",
     description="",
     author = "cjliux",

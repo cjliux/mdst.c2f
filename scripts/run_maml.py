@@ -3,12 +3,6 @@ import os
 import sys
 import logging
 
-import clks
-import utils
-
-from clks.utils.config import Config
-import utils.maml as maml
-ModeKeys = maml.ModeKeys
 
 try:
     from .__conf__ import *
@@ -16,6 +10,14 @@ try:
 except:
     from __conf__ import *
     from config_maml import args
+sys.path.append(MDST_HOME)
+
+import clks
+import utils
+
+from clks.utils.config import Config
+import utils.maml as maml
+ModeKeys = maml.ModeKeys
 
 
 def train(args):

@@ -182,7 +182,7 @@ def build_meta_input_fn(args, data_path, training):
                 args, dev_file, "test", all_slots, False, few_domains)
 
             aux_task_loader = {}
-            for d, (pair_train_fiew, slot_train_few) in train_few_domain_data.item():
+            for d, (pair_train_few, slot_train_few) in train_few_domain_data.item():
                 train_few_loader = sample_map_and_batch(
                     args, pair_train_few, batch_size, True, slot_train_few)
 

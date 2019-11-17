@@ -179,6 +179,8 @@ class Generator(nn.Module):
         self.sigmoid = nn.Sigmoid()
         self.slots = slots
 
+        self.W_att_prior_slot = nn.Linear(hidden_size, hidden_size)
+        self.W_att_postr_slot = nn.Linear(hidden_size, hidden_size)
         self.W_gate = nn.Linear(hidden_size, nb_gate)
 
         # Create independent slot embeddings
@@ -196,7 +198,8 @@ class Generator(nn.Module):
         #     print(name)
 
     def forward(self, batch_size, encoded_hidden, encoded_outputs, encoded_lens, 
-            story, max_res_len, target_batches, use_teacher_forcing, slot_temp):
+            story, max_res_len, target_batches, use_teacher_forcing, slot_temp,
+            postr_info = None):
         all_point_outputs = torch.zeros(len(slot_temp), batch_size, max_res_len, self.vocab_size)
         all_gate_outputs = torch.zeros(len(slot_temp), batch_size, self.nb_gate)
         if torch.cuda.is_available(): 
@@ -228,88 +231,142 @@ class Generator(nn.Module):
             else:
                 slot_emb_arr = torch.cat((slot_emb_arr, slot_emb_exp), dim=0)
 
-        if self.args["parallel_decode"]:
-            # Compute pointer-generator output, puting all (domain, slot) in one batch
-            decoder_input = self.dropout_layer(slot_emb_arr).view(-1, self.hidden_size) # (batch*|slot|) * emb
-            hidden = encoded_hidden.repeat(1, len(slot_temp), 1) # 1 * (batch*|slot|) * emb
-            words_point_out = [[] for i in range(len(slot_temp))]
-            words_class_out = []
+        # if self.args["parallel_decode"]:
+        #     # Compute pointer-generator output, puting all (domain, slot) in one batch
+        #     decoder_input = self.dropout_layer(slot_emb_arr).view(-1, self.hidden_size) # (batch*|slot|) * emb
+        #     hidden = encoded_hidden.repeat(1, len(slot_temp), 1) # 1 * (batch*|slot|) * emb
+        #     words_point_out = [[] for i in range(len(slot_temp))]
+        #     words_class_out = []
             
-            for wi in range(max_res_len):
-                dec_state, hidden = self.gru(decoder_input.expand_as(hidden), hidden)
+        #     for wi in range(max_res_len):
+        #         dec_state, hidden = self.gru(decoder_input.expand_as(hidden), hidden)
 
-                enc_out = encoded_outputs.repeat(len(slot_temp), 1, 1)
-                enc_len = encoded_lens * len(slot_temp)
-                context_vec, logits, prob = self.attend(enc_out, hidden.squeeze(0), enc_len)
+        #         enc_out = encoded_outputs.repeat(len(slot_temp), 1, 1)
+        #         enc_len = encoded_lens * len(slot_temp)
+        #         context_vec, logits, prob = self.attend(enc_out, hidden.squeeze(0), enc_len)
 
-                if wi == 0: 
-                    all_gate_outputs = torch.reshape(self.W_gate(context_vec), all_gate_outputs.size())
+        #         if wi == 0: 
+        #             all_gate_outputs = torch.reshape(self.W_gate(context_vec), all_gate_outputs.size())
 
-                p_vocab = self.attend_vocab(self.embedding.weight, hidden.squeeze(0))
-                p_gen_vec = torch.cat([dec_state.squeeze(0), context_vec, decoder_input], -1)
-                vocab_pointer_switches = self.sigmoid(self.W_ratio(p_gen_vec))
+        #         p_vocab = self.attend_vocab(self.embedding.weight, hidden.squeeze(0))
+        #         p_gen_vec = torch.cat([dec_state.squeeze(0), context_vec, decoder_input], -1)
+        #         vocab_pointer_switches = self.sigmoid(self.W_ratio(p_gen_vec))
                 
-                p_context_ptr = torch.zeros(p_vocab.size())
-                if torch.cuda.is_available(): 
-                    p_context_ptr = p_context_ptr.cuda()
-                p_context_ptr.scatter_add_(1, story.repeat(len(slot_temp), 1), prob)
+        #         p_context_ptr = torch.zeros(p_vocab.size())
+        #         if torch.cuda.is_available(): 
+        #             p_context_ptr = p_context_ptr.cuda()
+        #         p_context_ptr.scatter_add_(1, story.repeat(len(slot_temp), 1), prob)
 
-                final_p_vocab = (1 - vocab_pointer_switches).expand_as(p_context_ptr) * p_context_ptr + \
-                                vocab_pointer_switches.expand_as(p_context_ptr) * p_vocab
-                pred_word = torch.argmax(final_p_vocab, dim=1)
+        #         final_p_vocab = (1 - vocab_pointer_switches).expand_as(p_context_ptr) * p_context_ptr + \
+        #                         vocab_pointer_switches.expand_as(p_context_ptr) * p_vocab
+        #         pred_word = torch.argmax(final_p_vocab, dim=1)
                 
-                words = [self.word_vocab.index2token(w_idx.item()) for w_idx in pred_word]
+        #         words = [self.word_vocab.index2token(w_idx.item()) for w_idx in pred_word]
 
-                for si in range(len(slot_temp)):
-                    words_point_out[si].append(words[si*batch_size:(si+1)*batch_size])
+        #         for si in range(len(slot_temp)):
+        #             words_point_out[si].append(words[si*batch_size:(si+1)*batch_size])
                 
-                all_point_outputs[:, :, wi, :] = torch.reshape(final_p_vocab, 
-                                        (len(slot_temp), batch_size, self.vocab_size))
+        #         all_point_outputs[:, :, wi, :] = torch.reshape(final_p_vocab, 
+        #                                 (len(slot_temp), batch_size, self.vocab_size))
                 
-                if use_teacher_forcing:
-                    decoder_input = self.embedding(torch.flatten(target_batches[:, :, wi].transpose(1,0)))
-                else:
-                    decoder_input = self.embedding(pred_word)   
+        #         if use_teacher_forcing:
+        #             decoder_input = self.embedding(torch.flatten(target_batches[:, :, wi].transpose(1,0)))
+        #         else:
+        #             decoder_input = self.embedding(pred_word)   
                 
-                if torch.cuda.is_available(): decoder_input = decoder_input.cuda()
-        else:
+        #         if torch.cuda.is_available(): decoder_input = decoder_input.cuda()
+        # else:
+        if True:
             # Compute pointer-generator output, decoding each (domain, slot) one-by-one
             words_point_out = []
-            counter = 0
-            for slot in slot_temp:
+            kld_reg = []
+
+            msk_input = torch.zeros(batch_size, encoded_outputs.size(1)).cuda()
+            for i, l in enumerate(encoded_lens):
+                msk_input[i, :l] = 1.
+
+            for islot, slot in enumerate(slot_temp):
                 hidden = encoded_hidden
                 words = []
                 slot_emb = slot_emb_dict[slot]
-                decoder_input = self.dropout_layer(slot_emb).expand(batch_size, self.hidden_size)
+                slot_ctrl = self.dropout_layer(slot_emb).expand(batch_size, self.hidden_size)
+
+                # att from slot emb to enc out
+                prior_expsc = torch.matmul(encoded_outputs, 
+                    self.W_att_prior_slot(slot_ctrl).unsqueeze(-1)).squeeze(-1)
+                prior_expsc = prior_expsc.masked_fill(msk_input == 0, -1e9)
+                prior_alpha = F.softmax(prior_expsc, -1)
+                prior_ctx = torch.matmul(prior_alpha.unsqueeze(1), encoded_outputs).squeeze(1)
+
+                # postr att
+                if self.training:
+                    assert postr_info is not None
+                    enc_y = postr_info["enc_y"] # 32 7 400
+                    enc_y_slot = torch.select(enc_y, 1, islot)
+
+                    # add postr info
+                    postr_expsc = torch.matmul(encoded_outputs, 
+                        (self.W_att_postr_slot(slot_ctrl) + enc_y_slot
+                        ).unsqueeze(-1)).squeeze(-1)
+                    postr_expsc = postr_expsc.masked_fill(msk_input == 0, -1e9)
+                    postr_alpha = F.softmax(postr_expsc, -1)
+                    postr_ctx = torch.matmul(postr_alpha.unsqueeze(1), encoded_outputs).squeeze(1)
+
+                    ## reg loss
+                    kld = torch.mean(torch.sum(postr_alpha * (
+                            F.log_softmax(postr_expsc, -1) - F.log_softmax(prior_expsc, -1)
+                        ), -1))
+                    kld_reg.append(kld)
+
+                # all_gate_outputs[islot] = self.W_gate(prior_ctx)
+                if self.training:
+                    all_gate_outputs[islot] = self.W_gate(postr_ctx)
+                    hidden = postr_ctx.expand_as(hidden)
+                else:
+                    all_gate_outputs[islot] = self.W_gate(prior_ctx)
+                    hidden = prior_ctx.expand_as(hidden)
+                # decoder_input = slot_ctrl
+                decoder_input = None
+
                 for wi in range(max_res_len):
-                    dec_state, hidden = self.gru(decoder_input.expand_as(hidden), hidden)
-                    
-                    context_vec, logits, prob = self.attend(encoded_outputs, hidden.squeeze(0), encoded_lens)
-                    if wi == 0: 
-                        all_gate_outputs[counter] = self.W_gate(context_vec)
+                    if wi == 0:
+                        decoder_input = hidden.squeeze(0)
+                        dec_state, hidden = self.gru(hidden)
+                    else:
+                        dec_state, hidden = self.gru(decoder_input.expand_as(hidden), hidden)
+
+                    context_vec, logits, prob = self.attend(
+                        encoded_outputs, hidden.squeeze(0), encoded_lens)
+
                     p_vocab = self.attend_vocab(self.embedding.weight, hidden.squeeze(0))
                     p_gen_vec = torch.cat([dec_state.squeeze(0), context_vec, decoder_input], -1)
                     vocab_pointer_switches = self.sigmoid(self.W_ratio(p_gen_vec))
-                    
+
                     p_context_ptr = torch.zeros(p_vocab.size())
-                    if torch.cuda.is_available(): p_context_ptr = p_context_ptr.cuda()
+                    if torch.cuda.is_available(): 
+                        p_context_ptr = p_context_ptr.cuda()
                     p_context_ptr.scatter_add_(1, story, prob)
                     final_p_vocab = (1 - vocab_pointer_switches).expand_as(p_context_ptr) * p_context_ptr + \
                                     vocab_pointer_switches.expand_as(p_context_ptr) * p_vocab
-                    
+
                     pred_word = torch.argmax(final_p_vocab, dim=1)
                     words.append([self.word_vocab.index2token(w_idx.item()) for w_idx in pred_word])
-                    all_point_outputs[counter, :, wi, :] = final_p_vocab
-                    
+                    all_point_outputs[islot, :, wi, :] = final_p_vocab
+
                     if use_teacher_forcing:
-                        decoder_input = self.embedding(target_batches[:, counter, wi]) # Chosen word is next input
+                        decoder_input = self.embedding(target_batches[:, islot, wi]) # Chosen word is next input
                     else:
                         decoder_input = self.embedding(pred_word)
-                    if torch.cuda.is_available(): decoder_input = decoder_input.cuda()
-                counter += 1
+                    if torch.cuda.is_available(): 
+                        decoder_input = decoder_input.cuda()
+
                 words_point_out.append(words)
-        
-        return all_point_outputs, all_gate_outputs, words_point_out, []
+
+        if self.training:
+            kld_reg_loss = torch.stack(kld_reg).mean()
+            return all_point_outputs, all_gate_outputs, words_point_out, [], kld_reg_loss
+        else:
+            return all_point_outputs, all_gate_outputs, words_point_out, []
 
     def attend(self, seq, cond, lens):
         """
@@ -330,7 +387,7 @@ class Generator(nn.Module):
         return scores
 
 
-class TRADE(Model):
+class SAE(Model):
 
     def __init__(self, args, config):
         super().__init__()
@@ -357,13 +414,7 @@ class TRADE(Model):
             self.hidden_size, self.dropout, 
             self.all_slots_dict, self.nb_gate)
 
-    # def cuda(self):
-    #     self.encoder.cuda()
-    #     self.decoder.cuda()
-
-        # print("trade params:")
-        # for name, param in self.named_parameters():
-        #     print(name)
+        self.beta_epo = 0.
 
     def init_weights(self):
         pass
@@ -391,10 +442,32 @@ class TRADE(Model):
         batch_size = len(data['context_len'])
         self.copy_list = data['context_plain']
         max_res_len = data['generate_y'].size(2) if self.encoder.training else 10
-        all_point_outputs, all_gate_outputs, words_point_out, words_class_out = self.decoder.forward(batch_size, 
-            encoded_hidden, encoded_outputs, data['context_len'], story, max_res_len, data['generate_y'], 
-            use_teacher_forcing, slot_temp) 
-        return all_point_outputs, all_gate_outputs, words_point_out, words_class_out
+
+        # TODO: enc y
+        if self.training:
+            postr_info = {}
+            size_y = data['generate_y'].size()
+            gen_y = data['generate_y'].contiguous().view(np.prod(size_y[:-1]), size_y[-1])
+            y_lens = data['y_lengths'].contiguous().view(-1)
+            y_lens_sort, idx1 = torch.sort(y_lens, descending=True)
+            gen_y_sort = gen_y.index_select(0, idx1).contiguous()
+            _, y_hidden = self.encoder(gen_y_sort.transpose(0,1), y_lens_sort.tolist())
+            y_hidden = y_hidden.squeeze(0) # BD
+            _, idx2 = torch.sort(idx1)
+            enc_y = y_hidden.index_select(0, idx2).contiguous().view(*size_y[:-1], -1)
+            postr_info['enc_y'] = enc_y
+
+            (all_point_outputs, all_gate_outputs, words_point_out, 
+                words_class_out, kld_reg_loss) = self.decoder.forward(batch_size, 
+                    encoded_hidden, encoded_outputs, data['context_len'], 
+                    story, max_res_len, data['generate_y'], 
+                    use_teacher_forcing, slot_temp, postr_info) 
+            return all_point_outputs, all_gate_outputs, words_point_out, words_class_out, kld_reg_loss
+        else:
+            all_point_outputs, all_gate_outputs, words_point_out, words_class_out = self.decoder.forward(batch_size, 
+                encoded_hidden, encoded_outputs, data['context_len'], story, max_res_len, data['generate_y'], 
+                use_teacher_forcing, slot_temp) 
+            return all_point_outputs, all_gate_outputs, words_point_out, words_class_out
 
     def preprocess_data(self, data):
         data["turn_domain"] = [preprocess_domain(item, self.domain_dict) for item in data["turn_domain"]]
@@ -408,9 +481,9 @@ class TRADE(Model):
 
         use_teacher_forcing = random.random() < self.args["teacher_forcing_ratio"]
         slot_temp = data["slot_temp"][0]
-        (all_point_outputs, gates, 
-            words_point_out, words_class_out) = self.encode_and_decode(
-                data, use_teacher_forcing, slot_temp)
+        (all_point_outputs, gates, words_point_out, 
+            words_class_out, kld_reg_loss) = self.encode_and_decode(
+                    data, use_teacher_forcing, slot_temp)
 
         loss_ptr = masked_cross_entropy_for_value(
             all_point_outputs.transpose(0, 1).contiguous(),
@@ -425,7 +498,10 @@ class TRADE(Model):
         else:
             loss = loss_ptr
 
-        return loss, { "LP": loss_ptr, "LG": loss_gate }
+        loss = loss + self.beta_epo * kld_reg_loss
+ 
+        return loss, { "LP": loss_ptr, "LG": loss_gate, 
+                "BT": self.beta_epo, "KL": kld_reg_loss }
 
     def inference(self, data):
         pass
@@ -434,3 +510,8 @@ class TRADE(Model):
         # return filter(lambda p: p.requires_grad, self.parameters())
         return self.parameters()
 
+    def before_epoch(self, curr_epoch):
+        nepo_per_cycle = 3
+        tao = (curr_epoch % nepo_per_cycle) /  nepo_per_cycle
+        R = 0.6
+        self.beta_epo = min(tao / R, 1)
