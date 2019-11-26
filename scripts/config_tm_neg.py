@@ -28,9 +28,10 @@ parser.add_argument("--load_ckpt", action='store_true')
 parser.add_argument("--target", type=str, default="best")
 parser.add_argument("--init_from", type=str)
 
-parser.add_argument("-la", "--rl_look_ahead", type=int, default=1)
-parser.add_argument("-mld", "--meta_loss_lambda", type=float, default=0.4)
-parser.add_argument("-mle", "--meta_loss_eta", type=float, default=0.1)
+parser.add_argument("-mxe", "--max_epoch", type=int, default=200)
+# set patience to 0 to disable early stopping.
+parser.add_argument("-ntp", "--num_topic", type=int, default=184)
+parser.add_argument("-nneg", "--num_negs", type=int)
 
 # Training Setting
 parser.add_argument('-ds','--dataset', help='dataset', required=False, default="mwoz20")
@@ -90,9 +91,6 @@ if args["except_domain"] != "":
     args["addName"] += "Except"+args["except_domain"]
 if args["only_domain"] != "":
     args["addName"] += "Only"+args["only_domain"]
-args["addName"] += "LA" + str(args["rl_look_ahead"])
-args["addName"] += "LD" + str(args["meta_loss_lambda"])
-args["addName"] += "LE" + str(args["meta_loss_eta"])
 
 args["run_id"] += '-' + args["addName"] + '-bsz' + str(args["batch"])
 

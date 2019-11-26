@@ -30,6 +30,7 @@ parser.add_argument("--init_from", type=str)
 
 parser.add_argument("-mxe", "--max_epoch", type=int, default=200)
 # set patience to 0 to disable early stopping.
+parser.add_argument("-ntp", "--num_topic", type=int, default=184)
 
 # Training Setting
 parser.add_argument('-ds','--dataset', help='dataset', required=False, default="mwoz20")

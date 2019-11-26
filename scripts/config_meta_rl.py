@@ -92,7 +92,7 @@ if args["only_domain"] != "":
 args["addName"] += "LA" + str(args["rl_look_ahead"])
 args["addName"] += "LD" + str(args["meta_loss_lambda"])
 
-args["run_id"] += '-' + args["addName"]
+args["run_id"] += '-' + args["addName"] + '-bsz' + str(args["batch"])
 
 print(str(args))
 

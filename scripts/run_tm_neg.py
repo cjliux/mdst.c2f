@@ -5,10 +5,10 @@ import logging
 
 try:
     from .__conf__ import *
-    from .config import args
+    from .config_tm_neg import args
 except:
     from __conf__ import *
-    from config import args
+    from config_tm_neg import args
 sys.path.append(MDST_HOME)
 
 import clks
@@ -24,7 +24,7 @@ def train(args):
     config = Config().from_file(args["config"])
 
     if args["dataset"] == "mwoz20":
-        from data.mwoz20.interface import prepare_data_loader
+        from data.mwoz20.interface_tm_neg import prepare_data_loader
         (train_loader, dev_loader, test_loader,
             test_4d_loader) = prepare_data_loader(
                 args, args["data_path"], training=True)
@@ -43,7 +43,7 @@ def evaluate(args):
     config = Config().from_file(args["config"])
 
     if args["dataset"] == "mwoz20":
-        from data.mwoz20.interface import prepare_data_loader
+        from data.mwoz20.interface_tm_neg import prepare_data_loader
         (train_loader, dev_loader, test_loader,
             test_4d_loader) = prepare_data_loader(
                 args, args["data_path"], training=False)

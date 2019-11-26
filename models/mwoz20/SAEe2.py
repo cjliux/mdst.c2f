@@ -89,7 +89,7 @@ class BertAttention(nn.Module):
         self.output = BertSelfOutput(dim_hidden, dropout)
         self.batch_first = batch_first
 
-    def forward(self, input_tensor, input_lengths):
+    def forward(self, input_tensor, attn_mask):
         """
         input_tensor: T(bat, seq, dim)
         # attn_mask: T()
@@ -98,18 +98,71 @@ class BertAttention(nn.Module):
         if not self.batch_first:
             input_tensor = input_tensor.transpose(0,1)
         
-        attn_mask = torch.zeros(input_tensor.size()[:2])
-        if torch.cuda.is_available(): attn_mask = attn_mask.cuda()
-        for i, l in enumerate(input_lengths):
-            attn_mask[i,l:] = -1e9
-        attn_mask = attn_mask.unsqueeze(1).unsqueeze(2)
-
         self_output = self.self(input_tensor, attn_mask)
         attn_output = self.output(self_output, input_tensor)
 
         if not self.batch_first:
             attn_output = attn_output.transpose(0,1)
         return attn_output
+
+
+class BertIntermediate(nn.Module):
+
+    def __init__(self, dim_hidden, dim_inter):
+        super().__init__()
+        self.dim_hidden, self.dim_inter = dim_hidden, dim_inter
+        self.dense = nn.Linear(dim_hidden, dim_inter)
+
+    def gelu(self, x):
+        return x * 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
+    
+    def forward(self, hidden_states):
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.gelu(hidden_states)
+        return hidden_states
+
+
+class BertOutput(nn.Module):
+    
+    def __init__(self, dim_inter, dim_hidden, dropout):
+        super().__init__()
+        self.dim_inter, self.dim_hidden = dim_inter, dim_hidden
+        self.dense = nn.Linear(dim_inter, dim_hidden)
+        self.layer_norm = LayerNorm(dim_hidden, learnable=True, epsilon=1e-12)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, hidden_states, input_tensor):
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.layer_norm(hidden_states + input_tensor)
+        return hidden_states
+
+
+class BertLayer(nn.Module):
+
+    def __init__(self, dim_hidden, num_heads, dim_inter, dropout, batch_first):
+        super().__init__()
+        self.attention = BertAttention(dim_hidden, num_heads, dropout, batch_first=True)
+        self.intermediate = BertIntermediate(dim_hidden, dim_inter)
+        self.output = BertOutput(dim_inter, dim_hidden, dropout)
+        self.batch_first = batch_first
+    
+    def forward(self, hidden_states, input_lengths):
+        if not self.batch_first:
+            hidden_states = hidden_states.transpose(0,1)
+
+        attn_mask = torch.zeros(hidden_states.size()[:2])
+        if torch.cuda.is_available(): attn_mask = attn_mask.cuda()
+        for i, l in enumerate(input_lengths):
+            attn_mask[i,l:] = -1e9
+        attn_mask = attn_mask.unsqueeze(1).unsqueeze(2)
+
+        attn_output = self.attention(hidden_states, attn_mask)
+        inter_output = self.intermediate(attn_output)
+        layer_output = self.output(inter_output, attn_output)
+        if not self.batch_first:
+            layer_output = layer_output.transpose(0,1)
+        return layer_output
 
 ###
 # original
@@ -223,7 +276,8 @@ class EncoderRNN(nn.Module):
         self.gru = nn.GRU(hidden_size, hidden_size, n_layers, dropout=dropout, bidirectional=True)
         # self.domain_W = nn.Linear(hidden_size, nb_domain)
 
-        self.self_att = BertAttention(hidden_size, 4, dropout)
+        # self.self_att = BertAttention(hidden_size, 4, dropout)
+        self.bert_layer = BertLayer(hidden_size, 4, hidden_size, dropout, batch_first=False)
 
         if self.args["load_embedding"]:
             with open(os.path.join(config["embedding_path"])) as fd:
@@ -258,7 +312,8 @@ class EncoderRNN(nn.Module):
         outputs = outputs[:,:,:self.hidden_size] + outputs[:,:,self.hidden_size:]
 
         ## added
-        outputs = self.self_att(outputs, input_lengths)
+        # outputs = self.self_att(outputs, input_lengths)
+        outputs = self.bert_layer(outputs, input_lengths)
 
         return outputs.transpose(0,1), hidden.unsqueeze(0)
 
@@ -488,7 +543,7 @@ class Generator(nn.Module):
         return scores
 
 
-class SAEe(Model):
+class SAEe2(Model):
 
     def __init__(self, args, config):
         super().__init__()
@@ -619,3 +674,4 @@ class SAEe(Model):
             self.beta_epo = min(tao / R, 1)
         else:
             self.beta_epo = 1.
+

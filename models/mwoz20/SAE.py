@@ -294,7 +294,7 @@ class Generator(nn.Module):
                 # att from slot emb to enc out
                 prior_expsc = torch.matmul(encoded_outputs, 
                     self.W_att_prior_slot(slot_ctrl).unsqueeze(-1)).squeeze(-1)
-                prior_expsc = prior_expsc.masked_fill(msk_input == 0, -1e9)
+                prior_expsc.masked_fill_(msk_input == 0, -1e9)
                 prior_alpha = F.softmax(prior_expsc, -1)
                 prior_ctx = torch.matmul(prior_alpha.unsqueeze(1), encoded_outputs).squeeze(1)
 
@@ -308,7 +308,7 @@ class Generator(nn.Module):
                     postr_expsc = torch.matmul(encoded_outputs, 
                         (self.W_att_postr_slot(slot_ctrl) + enc_y_slot
                         ).unsqueeze(-1)).squeeze(-1)
-                    postr_expsc = postr_expsc.masked_fill(msk_input == 0, -1e9)
+                    postr_expsc.masked_fill_(msk_input == 0, -1e9)
                     postr_alpha = F.softmax(postr_expsc, -1)
                     postr_ctx = torch.matmul(postr_alpha.unsqueeze(1), encoded_outputs).squeeze(1)
 
@@ -511,7 +511,10 @@ class SAE(Model):
         return self.parameters()
 
     def before_epoch(self, curr_epoch):
-        nepo_per_cycle = 3
-        tao = (curr_epoch % nepo_per_cycle) /  nepo_per_cycle
-        R = 0.6
-        self.beta_epo = min(tao / R, 1)
+        if curr_epoch < 12:
+            nepo_per_cycle = 3
+            tao = (curr_epoch % nepo_per_cycle) /  nepo_per_cycle
+            R = 0.6
+            self.beta_epo = min(tao / R, 1)
+        else:
+            self.beta_epo = 1.
