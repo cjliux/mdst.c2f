@@ -93,7 +93,7 @@ class LoLLearner(clks.utils.scaffold.Scaffold):
 
                 self.model.before_update(self.ckpt["global_count"])
 
-                # meta rl
+                # meta loss
                 model_origin = copy.deepcopy(self.model.state_dict())
                 optim_origin = copy.deepcopy(self.optimizer.state_dict())
 
