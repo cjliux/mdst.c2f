@@ -1,0 +1,20 @@
+_model:
+  settings:
+    word_vocab: ../data/woz/mwoz21/save_epg/word_vocab.txt
+    mem_vocab: ../data/woz/mwoz21/save_epg/mem_vocab.txt
+    mem_vocabs_fmt : ../data/woz/mwoz21/save_epg/mem_vocab_{}.txt
+    ont_vocabs_fmt : ../data/woz/mwoz21/save_epg/ont_{}.txt
+    gating_dict : ../data/woz/mwoz21/save_epg/gating_dict.txt
+    domain_dict :  ../data/woz/mwoz21/save_epg/domain_dict.txt
+    all_slots_dict : ../data/woz/mwoz21/save_epg/all_slots.txt
+    slots_train_dict : ../data/woz/mwoz21/save_epg/slots_train.txt
+    slots_dev_dict : ../data/woz/mwoz21/save_epg/slots_dev.txt
+    slots_test_dict : ../data/woz/mwoz21/save_epg/slots_test.txt
+    word_embedding_path : ../data/woz/mwoz21/save_epg/src_emb18277.json
+    word_embedding_path_char : ../data/woz/mwoz21/save_epg/src_emb18277_char.json
+    mem_embedding_path : ../data/woz/mwoz21/save_epg/mem_emb990.json
+    # tm_init_bg : ../data/woz/mwoz21/save_epg/init_bg.npz
+    prior_dist : ../data/woz/mwoz21/save_epg/prior_dist.npz
+    elmo_option_file : ../cache/elmo/elmo_2x4096_512_2048cnn_2xhighway_options.json
+    elmo_weight_file : ../cache/elmo/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5
+    

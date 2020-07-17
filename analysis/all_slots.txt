@@ -1,0 +1,30 @@
+hotel-pricerange
+hotel-type
+hotel-parking
+hotel-book stay
+hotel-book day
+hotel-book people
+hotel-area
+hotel-stars
+hotel-internet
+train-destination
+train-day
+train-departure
+train-arriveby
+train-book people
+train-leaveat
+attraction-area
+restaurant-food
+restaurant-pricerange
+restaurant-area
+attraction-name
+restaurant-name
+attraction-type
+hotel-name
+taxi-leaveat
+taxi-destination
+taxi-departure
+restaurant-book time
+restaurant-book day
+restaurant-book people
+taxi-arriveby

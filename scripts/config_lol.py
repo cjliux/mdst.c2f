@@ -16,11 +16,10 @@ else:
 
 MAX_LENGTH = 10
 
-parser = argparse.ArgumentParser(description='TRADE Multi-Domain DST')
+parser = argparse.ArgumentParser(description='Multi-Domain DST')
 
 parser.add_argument("--mode", required=True, choices=['train', 'eval', 'test'])
-parser.add_argument("--config", required=False, type=str, 
-                    default="./protos/trade_mwoz2.0.yaml")
+parser.add_argument("--config", required=True, type=str, help="relative")
 parser.add_argument("--data_path", required=False, type=str, 
                     default="../data/woz/mwoz20")
 parser.add_argument("--run_id", type=str, default="trade")
@@ -29,11 +28,12 @@ parser.add_argument("--load_ckpt", action='store_true')
 parser.add_argument("--target", type=str, default="best")
 parser.add_argument("--init_from", type=str)
 
-parser.add_argument("-nolrsc", "--no_lr_sched", action='store_false')
-
 parser.add_argument("-mxe", "--max_epoch", type=int, default=200)
-# set patience to 0 to disable early stopping.
-parser.add_argument("-ntp", "--num_topic", type=int, default=184)
+parser.add_argument("-la", "--lol_look_ahead", type=int, default=1)
+parser.add_argument("-lld", "--lol_lambda", type=float, default=0.4)
+parser.add_argument("-lle", "--lol_eta", type=float, default=0.1)
+
+parser.add_argument("-snum", "--slot_number", type=int, required=False)
 
 parser.add_argument("-anl", "--analyze", action='store_true')
 
@@ -95,6 +95,9 @@ if args["except_domain"] != "":
     args["addName"] += "Except"+args["except_domain"]
 if args["only_domain"] != "":
     args["addName"] += "Only"+args["only_domain"]
+args["addName"] += "LA" + str(args["lol_look_ahead"])
+args["addName"] += "LD" + str(args["lol_lambda"])
+args["addName"] += "LE" + str(args["lol_eta"])
 
 args["run_id"] += '-' + args["addName"] + '-bsz' + str(args["batch"])
 

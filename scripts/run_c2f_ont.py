@@ -19,7 +19,6 @@ import utils.scaffold as scaffold
 ModeKeys = scaffold.ModeKeys
 
 
-
 def train(args):
     config = Config().from_file(args["config"])
 
@@ -27,12 +26,13 @@ def train(args):
     (train_loader, dev_loader, test_loader,
         test_4d_loader) = prepare_data_loader(
             args, args["data_path"], training=True)
-    from models.interface import build_model_fn
+    from models.interface_c2f_ont import build_model_fn
     model_fn = build_model_fn(args, config)
     train_spec = model_fn(ModeKeys.TRAIN, train_loader)
     eval_spec = model_fn(ModeKeys.EVAL, dev_loader)
     scf = scaffold.Scaffold().build(
-        args, config, os.path.join(ENV_PATH, "nolol_{}_trained".format(args["dataset"])), args["run_id"])
+        args, config, os.path.join(ENV_PATH, 
+        "nolol_{}_trained".format(args["dataset"])), args["run_id"])
     scf.train(train_spec, eval_spec)
 
 
@@ -43,10 +43,11 @@ def evaluate(args):
     (train_loader, dev_loader, test_loader,
         test_4d_loader) = prepare_data_loader(
             args, args["data_path"], training=False)
-    from models.interface import build_model_fn
+    from models.interface_c2f_ont import build_model_fn
     model_fn = build_model_fn(args, config)
     scf = scaffold.Scaffold().build(args, config,
-                os.path.join(ENV_PATH, "nolol_{}_trained".format(args["dataset"])), args["run_id"])
+                os.path.join(ENV_PATH, 
+                "nolol_{}_trained".format(args["dataset"])), args["run_id"])
 
     # for dev set
     if args["run_dev_testing"]:

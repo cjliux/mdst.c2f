@@ -75,6 +75,9 @@ class Vocabulary():
         self._update_mapping()
         return self
 
+    def has_token(self, token):
+        return (token in self.tok2idx)
+
     def get_vocab(self):
         return copy.deepcopy(self._vocab)
 
